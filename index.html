@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -197,18 +197,19 @@
         </div>
        
 
- <div>
-  <label>Axes</label>
-  <div style="display:flex;align-items:center;gap:8px">
-    <canvas id="axes" width="32" height="32"></canvas>
-    <button id="btnCSV" class="btn u-small" title="Download data as CSV">CSV</button>
-    <button id="btnJSON" class="btn u-small" title="Download data as JSON">JSON</button>
-    <button id="btnImportJSON" class="btn u-small" title="Import configuration from JSON">Import</button>
-  </div>
-</div>
-<input type="file" id="fileInput" accept=".json" style="display:none">     
+        <div>
+          <label>Data Export/Import</label>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <canvas id="axes" width="32" height="32"></canvas>
+            <button id="btnCSV" class="btn u-small" title="Download data as CSV">CSV</button>
+            <button id="btnExportJSON" class="btn u-small" title="Download configuration and data as JSON">Export JSON</button>
+            <button id="btnImportJSON" class="btn u-small" title="Import configuration from JSON">Import JSON</button>
+          </div>
+        </div>
 
-</div>
+      </div>
+      <input type="file" id="fileInput" accept=".json" style="display:none">     
+
       <canvas id="view"></canvas>
       <div id="hud" class="u-small">
         <div><span class="k">t</span> = <span id="tOut">0.000</span> s</div>
@@ -846,28 +847,74 @@
     URL.revokeObjectURL(url);
   }
 
-function exportData(fmt){
-  const rows = collectExportRows();
-  const cols = ['t','aG','corner0','corner1','corner2','corner3'];
-  const meta = {
-    units: ids('units') ? ids('units').value : 'us',
-    params: {...sim.params},
-    timestamp: new Date().toISOString()
-  };
-  
-  if(fmt==='csv'){
-    const lines = [cols.join(',')];
-    for(const r of rows){ lines.push(r.map(v=> Number.isFinite(v)? (+v).toFixed(6) : '').join(',')); }
-    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
-    download(blob, safeFilename('drop-shock-data.csv'));
-  } else {
-    const payload = {meta, columns: cols, rows};
-    const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
-    download(blob, safeFilename('drop-shock-data.json'));
+  function exportData(fmt){
+    const rows = collectExportRows();
+    const cols = ['t','aG','corner0','corner1','corner2','corner3'];
+    const meta = {
+      units: ids('units') ? ids('units').value : 'us',
+      params: {...sim.params},
+      timestamp: new Date().toISOString()
+    };
+    
+    if(fmt==='csv'){
+      const lines = [cols.join(',')];
+      for(const r of rows){ lines.push(r.map(v=> Number.isFinite(v)? (+v).toFixed(6) : '').join(',')); }
+      const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+      download(blob, safeFilename('drop-shock-data.csv'));
+    } else {
+      const payload = {meta, columns: cols, rows};
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      download(blob, safeFilename('drop-shock-data.json'));
+    }
   }
-}
 
-
+  function importJSON(file){
+    const reader = new FileReader();
+    reader.onload = function(event){
+      try {
+        const data = JSON.parse(event.target.result);
+        
+        // Check if this is a valid export file
+        if(!data.meta || !data.meta.params){
+          alert('Invalid JSON file format. Please select a valid export file.');
+          return;
+        }
+        
+        const params = data.meta.params;
+        const units = data.meta.units || 'us';
+        
+        // Set units first
+        if(ids('units')){ ids('units').value = units; }
+        
+        // Repopulate all parameters
+        if(ids('G')) ids('G').value = params.G || (units==='si' ? 9.81 : 386.09);
+        if(ids('W')) ids('W').value = params.W || 100;
+        if(ids('Lx')) ids('Lx').value = params.Lx || 48;
+        if(ids('Ly')) ids('Ly').value = params.Ly || 48;
+        if(ids('Lz')) ids('Lz').value = params.Lz || 24;
+        if(ids('h')) ids('h').value = params.h || 6;
+        if(ids('k')) ids('k').value = params.k || 50;
+        if(ids('c')) ids('c').value = params.c || 0.2;
+        if(ids('thx')) ids('thx').value = params.thx || 0;
+        if(ids('thy')) ids('thy').value = params.thy || 0;
+        
+        // Update simulation
+        syncMass();
+        readParams();
+        reset();
+        
+        alert('Configuration loaded successfully!');
+        
+      } catch(err){
+        alert('Error loading JSON file: ' + err.message);
+      }
+      
+      // Reset file input
+      fileInput.value = '';
+    };
+    
+    reader.readAsText(file);
+  }
 
   // --------------------------- UI wiring ---------------------------
   const ids = s=>document.getElementById(s);
@@ -980,65 +1027,25 @@ function exportData(fmt){
     resize(true);
     ['accelPlot','springPlot'].forEach(cid=>{ const c=ids(cid); if(c){ c.addEventListener('click', e=> onPlotClick(c,e)); }});
 
-['btnCSV','btnJSON'].forEach(cid=>{ const b=ids(cid); if(b){ b.addEventListener('click', ()=> exportData(cid==='btnCSV'?'csv':'json')); }});
+    // Export button handlers
+    const btnCSV = ids('btnCSV');
+    if(btnCSV){ btnCSV.addEventListener('click', ()=> exportData('csv')); }
+    
+    const btnExportJSON = ids('btnExportJSON');
+    if(btnExportJSON){ btnExportJSON.addEventListener('click', ()=> exportData('json')); }
 
-// Import JSON handler
-const btnImport = ids('btnImportJSON');
-const fileInput = ids('fileInput');
-if(btnImport && fileInput){
-  btnImport.addEventListener('click', ()=> fileInput.click());
-  
-  fileInput.addEventListener('change', (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(event){
-      try {
-        const data = JSON.parse(event.target.result);
-        
-        // Check if this is a valid export file
-        if(!data.meta || !data.meta.params){
-          alert('Invalid JSON file format. Please select a valid export file.');
-          return;
-        }
-        
-        const params = data.meta.params;
-        const units = data.meta.units || 'us';
-        
-        // Set units first
-        if(ids('units')){ ids('units').value = units; }
-        
-        // Repopulate all parameters
-        if(ids('G')) ids('G').value = params.G || (units==='si' ? 9.81 : 386.09);
-        if(ids('W')) ids('W').value = params.W || 100;
-        if(ids('Lx')) ids('Lx').value = params.Lx || 48;
-        if(ids('Ly')) ids('Ly').value = params.Ly || 48;
-        if(ids('Lz')) ids('Lz').value = params.Lz || 24;
-        if(ids('h')) ids('h').value = params.h || 6;
-        if(ids('k')) ids('k').value = params.k || 50;
-        if(ids('c')) ids('c').value = params.c || 0.2;
-        if(ids('thx')) ids('thx').value = params.thx || 0;
-        if(ids('thy')) ids('thy').value = params.thy || 0;
-        
-        // Update simulation
-        syncMass();
-        readParams();
-        reset();
-        
-        alert('Configuration loaded successfully!');
-        
-      } catch(err){
-        alert('Error loading JSON file: ' + err.message);
-      }
+    // Import JSON handler
+    const btnImport = ids('btnImportJSON');
+    const fileInput = ids('fileInput');
+    if(btnImport && fileInput){
+      btnImport.addEventListener('click', ()=> fileInput.click());
       
-      // Reset file input
-      fileInput.value = '';
-    };
-    
-    reader.readAsText(file);
-  });
-}
+      fileInput.addEventListener('change', (e)=>{
+        const file = e.target.files[0];
+        if(!file) return;
+        importJSON(file);
+      });
+    }
 
     requestAnimationFrame(tick);
   }
