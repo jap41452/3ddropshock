@@ -17,7 +17,7 @@
     /* ------ Two-column layout (Setup fixed left, Box on right) ------ */
     .wrap{
       display:grid;
-      grid-template-columns: var(--setup-col) minmax(600px,1fr);  /* ← right column is box+spring */
+      grid-template-columns: var(--setup-col) 600px;  /* ← right column is box+spring */
       grid-template-areas:"controls view" "accel spring";
       gap:16px; padding:16px; align-items:start;
     }
@@ -69,7 +69,7 @@
     #view{width:100%;height:100%;display:block;background:#ffffff}
     #axes{width:32px;height:32px;display:block;background:#fff;border:1px solid var(--border);border-radius:6px}
     #hud{
-      position:absolute; right:150px; top:130px; left:auto; bottom:auto;
+      position:absolute; right:16px; top:180px; left:auto; bottom:auto;
       background:var(--hud); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--hudText);
       font-size:12px !important; line-height:1.25 !important; white-space:nowrap; z-index:5;
     }
